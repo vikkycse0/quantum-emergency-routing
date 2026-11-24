@@ -1,6 +1,6 @@
 // ============================================================
 // HOSPITALS MODULE — Discovery, Proximity & Clinical Triage
-// QERI (Quantum Emergency Routing Intelligence)
+// AERT (AI Emergency Routing & Tracking)
 // ============================================================
 
 let currentHospitals = [];

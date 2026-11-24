@@ -26,9 +26,9 @@ from providers.incident_provider import incident_provider
 from database.db import db_manager
 
 app = FastAPI(
-    title="Quantum AI Emergency Ambulance Routing & Tracking System (QERI + Q-AERS)",
+    title="AERT — AI Emergency Routing & Tracking API",
     version="3.0.0",
-    description="Unified Emergency Navigation, Live Mobile Tracking Sync, Weather & Incident Risk Analysis, Hospital Capability Matching, and Multi-Paradigm Route Optimization"
+    description="AERT Unified Emergency Navigation, Live Mobile Tracking Sync, Weather & Incident Risk Analysis, Hospital Capability Matching, and Multi-Paradigm Route Optimization"
 )
 
 app.add_middleware(
@@ -70,12 +70,12 @@ def _empty_dispatch_state() -> Dict[str, Any]:
         "hospital_lng": None,
         "phase1_path": [],
         "phase2_path": [],
-        "path": [],  # Backward-compatible Q-AERS alias (active leg path)
+        "path": [],  # Active leg path for AERT mobile sync
         "phase1_duration_sec": 0.0,
         "phase2_duration_sec": 0.0,
         "eta": 0.0,
         "total_eta_min": 0.0,
-        "hosp_name": "Quantum Dispatch Base",
+        "hosp_name": "AERT Dispatch Base",
         "start_time": 0.0,
         "start_time_ms": 0.0,
         "time_scale": 30,
@@ -189,7 +189,7 @@ def serve_mobile():
 def health_check():
     return {
         "status": "healthy",
-        "service": "Quantum Emergency Routing & Live Tracking (QERI + Q-AERS)",
+        "service": "AERT — AI Emergency Routing & Live Tracking",
         "version": "3.0.0",
         "simulation_seed": settings.SIMULATION_SEED,
         "qaoa_enabled": settings.ENABLE_QAOA_SIMULATION,
@@ -422,7 +422,7 @@ def execute_dispatch(req: DispatchActionRequest):
 
 @app.get("/api/active_dispatch")
 def get_active_dispatch(case_id: Optional[str] = Query(None)):
-    """Unified Q-AERS + QERI live dispatch bridge for mobile tracking UI."""
+    """AERT live dispatch bridge for mobile tracking UI."""
     if case_id and active_dispatch_state.get("case_id") and active_dispatch_state["case_id"] != case_id:
         return {"active": False, "case_id": case_id, "phase": "waiting_for_dispatch"}
     return active_dispatch_state
@@ -700,7 +700,7 @@ def simulate_dispatch_flow(req: LegacyEmergencyRequest):
         "explainability_report": report
     })
 
-    # 11. Update Unified Q-AERS Live Sync State for Mobile Tracking App
+    # 11. Update AERT Live Sync State for Mobile Tracking App
     now_ms = round(time.time() * 1000.0, 1)
     active_dispatch_state.update({
         "active": True,
@@ -773,5 +773,5 @@ def simulate_dispatch_flow(req: LegacyEmergencyRequest):
     }
 
 if __name__ == "__main__":
-    print(f"[STARTUP] Quantum Emergency Routing Server starting on http://{settings.HOST}:{settings.PORT}")
+    print(f"[STARTUP] AERT Server starting on http://{settings.HOST}:{settings.PORT}")
     uvicorn.run(app, host=settings.HOST, port=settings.PORT)

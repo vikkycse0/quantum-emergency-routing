@@ -21,7 +21,7 @@ class RouteService:
 
     @staticmethod
     def _query_osrm_url(url: str) -> Optional[List[Dict[str, Any]]]:
-        req = urllib.request.Request(url, headers={'User-Agent': 'QuantumEmergencyRouter/2.2'})
+        req = urllib.request.Request(url, headers={'User-Agent': 'AERT/3.0 (OSRMRouter)'})
         with urllib.request.urlopen(req, timeout=5) as response:
             if response.status == 200:
                 data = json.loads(response.read().decode('utf-8'))

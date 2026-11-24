@@ -44,7 +44,7 @@ class TestQuantumEmergencyIntelligenceSystem(unittest.TestCase):
 
     def test_01_coordinate_and_emergency_model(self):
         case = EmergencyCase(
-            case_id="CASE-QERI-01",
+            case_id="CASE-AERT-01",
             latitude=28.6139,
             longitude=77.2090,
             accuracy=12.5,
@@ -52,7 +52,7 @@ class TestQuantumEmergencyIntelligenceSystem(unittest.TestCase):
             emergency_type=EmergencyType.CARDIAC,
             severity=Severity.CRITICAL
         )
-        self.assertEqual(case.case_id, "CASE-QERI-01")
+        self.assertEqual(case.case_id, "CASE-AERT-01")
         self.assertEqual(case.latitude, 28.6139)
         self.assertEqual(case.longitude, 77.2090)
         self.assertEqual(case.source, "browser-gps")
@@ -335,11 +335,11 @@ class TestQuantumEmergencyIntelligenceSystem(unittest.TestCase):
             # Unified web & static routes
             st_dash, html_dash = req("/")
             self.assertEqual(st_dash, 200)
-            self.assertIn("Quantum Emergency Dispatch", html_dash)
+            self.assertIn("AERT Command Center", html_dash)
 
             st_phone, html_phone = req("/phone.html")
             self.assertEqual(st_phone, 200)
-            self.assertIn("Q-AERS Patient SOS", html_phone)
+            self.assertIn("AERT Patient SOS", html_phone)
 
             st_cfg, js_cfg = req("/js/config.js")
             self.assertEqual(st_cfg, 200)

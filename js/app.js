@@ -1,6 +1,6 @@
 // ============================================================
 // APP — Main Dashboard Controller & Geolocation Engine
-// QERI (Quantum Emergency Routing Intelligence)
+// AERT (AI Emergency Routing & Tracking)
 // ============================================================
 
 let isMapLive = false;

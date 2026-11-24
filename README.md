@@ -1,4 +1,4 @@
-# ⚛ Quantum AI Emergency Ambulance Routing & Hospital Decision Support System
+# ⚛ AERT — AI Emergency Routing & Tracking System
 
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-009688.svg)](https://fastapi.tiangolo.com)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)

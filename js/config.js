@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════
-// QUANTUM EMERGENCY ROUTING & TRACKING — CONFIG
+// AERT (AI EMERGENCY ROUTING & TRACKING) — CONFIG
 // Unified Server & Standalone Compatible
 // ═══════════════════════════════════════
 

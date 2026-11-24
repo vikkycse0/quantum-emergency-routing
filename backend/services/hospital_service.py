@@ -106,7 +106,7 @@ class HospitalService:
             url = f"https://photon.komoot.io/api/?q=hospital&lat={lat}&lon={lng}&limit=12"
             req = urllib.request.Request(
                 url,
-                headers={"User-Agent": "QuantumEmergencyRouting/2.0 (PhotonOSM)"}
+                headers={"User-Agent": "AERT/3.0 (PhotonOSM)"}
             )
             with urllib.request.urlopen(req, timeout=4) as response:
                 if response.status == 200:
@@ -167,7 +167,7 @@ out center 12;"""
                 req = urllib.request.Request(
                     mirror,
                     data=query.encode('utf-8'),
-                    headers={'User-Agent': 'QuantumEmergencyRouting/2.1'}
+                    headers={'User-Agent': 'AERT/3.0 (OverpassOSM)'}
                 )
                 with urllib.request.urlopen(req, timeout=6) as response:
                     if response.status == 200:

@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════
-   QUANTUM EMERGENCY DISPATCH (QERI) — EOC COMMAND THEME
+   AERT (AI EMERGENCY ROUTING & TRACKING) — EOC COMMAND THEME
    Design: High-Tech Mission Control & Emergency Telemetry
    ═══════════════════════════════════════════════════════════ */
 
@@ -362,7 +362,7 @@ html, body {
 .hosp-item:hover    { border-color: var(--accent-border); background: var(--surface-hover); }
 .hosp-item.selected { border-color: var(--accent); background: var(--accent-dim); box-shadow: 0 0 14px rgba(0, 212, 255, 0.2); }
 
-.leaflet-tile.qeri-dark-tiles {
+.leaflet-tile.aert-dark-tiles {
     filter: invert(1) hue-rotate(180deg) brightness(0.82) contrast(0.92);
 }
 

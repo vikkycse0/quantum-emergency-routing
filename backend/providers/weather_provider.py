@@ -63,7 +63,7 @@ class OpenMeteoWeatherProvider(WeatherProvider):
         try:
             req = urllib.request.Request(
                 url,
-                headers={"User-Agent": "QuantumEmergencyRouting/2.0 (OpenMeteoProvider)"}
+                headers={"User-Agent": "AERT/3.0 (OpenMeteoProvider)"}
             )
             with urllib.request.urlopen(req, timeout=4) as response:
                 if response.status == 200:

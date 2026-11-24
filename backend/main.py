@@ -20,7 +20,7 @@ from simulation.signal_control import TrafficSignalController
 
 def run_full_simulation():
     print("="*65)
-    print("  AI-ASSISTED EMERGENCY AMBULANCE ROUTING SYSTEM SIMULATION  ")
+    print("  AERT — AI EMERGENCY ROUTING & TRACKING SYSTEM SIMULATION  ")
     print("="*65)
     
     # 1. Fleet & Station Initialization

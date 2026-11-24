@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Q-AERS Mobile SOS & Live Ambulance Tracker</title>
+    <title>AERT Mobile SOS & Live Ambulance Tracker</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap');
@@ -63,7 +63,7 @@
             z-index: 1;
         }
 
-        .leaflet-tile.qeri-dark-tiles {
+        .leaflet-tile.aert-dark-tiles {
             filter: invert(1) hue-rotate(180deg) brightness(0.84) contrast(0.92);
         }
 
@@ -320,7 +320,7 @@
         <div class="top-overlay">
             <div class="brand-pill">
                 <span>⚛</span>
-                <span>Q-AERS Patient SOS</span>
+                <span>AERT Patient SOS</span>
             </div>
             <div class="gps-badge" id="gpsBadge">Locating...</div>
         </div>
@@ -388,7 +388,7 @@
                     &amp; hospital assignment...</div>
             </div>
 
-            <!-- STATE 3: LIVE AMBULANCE TRACKING (Q-AERS + QERI SYNC) -->
+            <!-- STATE 3: LIVE AMBULANCE TRACKING (AERT LIVE SYNC) -->
             <div class="sheet-state" id="state-tracking">
                 <div class="eta-banner">
                     <div>
@@ -449,7 +449,7 @@
                 map = L.map('mobileMap', { zoomControl: false }).setView([lat, lng], 14);
                 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                     maxZoom: 19,
-                    className: 'qeri-dark-tiles'
+                    className: 'aert-dark-tiles'
                 }).addTo(map);
             } else {
                 map.setView([lat, lng], 14);

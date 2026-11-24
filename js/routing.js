@@ -1,6 +1,6 @@
 // ============================================================
 // ROUTING MODULE — OSRM Road Corridors & Two-Phase Emergency Dispatch
-// QERI (Quantum Emergency Routing Intelligence)
+// AERT (AI Emergency Routing & Tracking)
 // ============================================================
 
 let isAmbulanceEnRoute = false;

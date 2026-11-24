@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: quantum-emergency-routing
+    name: aert-emergency-routing
     runtime: python
     plan: free
     buildCommand: pip install -r requirements.txt

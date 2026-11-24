@@ -1,6 +1,6 @@
 // ============================================================
 // ANIMATION MODULE — Two-Phase Live Vehicle Telemetry & Movement
-// QERI (Quantum Emergency Routing Intelligence)
+// AERT (AI Emergency Routing & Tracking)
 // ============================================================
 
 let ambulanceAnimId = null;
