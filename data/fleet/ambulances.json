@@ -1,0 +1,52 @@
+[
+  {
+    "ambulance_id": "AMB-01",
+    "name": "Rapid Response Unit Alpha",
+    "latitude": 17.7120,
+    "longitude": 83.2980,
+    "status": "available",
+    "capabilities": ["ALS", "Cardiac", "Defibrillator", "Oxygen", "Ventilator"],
+    "current_speed_kmh": 0.0,
+    "last_update": "2026-08-20T12:00:00Z"
+  },
+  {
+    "ambulance_id": "AMB-02",
+    "name": "Advanced Life Support Beta",
+    "latitude": 17.7290,
+    "longitude": 83.3190,
+    "status": "available",
+    "capabilities": ["ALS", "Trauma", "Defibrillator", "Oxygen"],
+    "current_speed_kmh": 0.0,
+    "last_update": "2026-08-20T12:00:00Z"
+  },
+  {
+    "ambulance_id": "AMB-03",
+    "name": "Basic Life Support Gamma",
+    "latitude": 17.7010,
+    "longitude": 83.2850,
+    "status": "available",
+    "capabilities": ["BLS", "FirstAid", "Oxygen", "Stretcher"],
+    "current_speed_kmh": 0.0,
+    "last_update": "2026-08-20T12:00:00Z"
+  },
+  {
+    "ambulance_id": "AMB-04",
+    "name": "Critical Cardiac Unit Delta",
+    "latitude": 17.7420,
+    "longitude": 83.3380,
+    "status": "available",
+    "capabilities": ["ALS", "Cardiac", "ECG", "Defibrillator", "Oxygen", "Ventilator"],
+    "current_speed_kmh": 0.0,
+    "last_update": "2026-08-20T12:00:00Z"
+  },
+  {
+    "ambulance_id": "AMB-05",
+    "name": "Trauma Rescue Unit Epsilon",
+    "latitude": 17.6950,
+    "longitude": 83.3050,
+    "status": "available",
+    "capabilities": ["ALS", "Trauma", "Burn", "Oxygen"],
+    "current_speed_kmh": 0.0,
+    "last_update": "2026-08-20T12:00:00Z"
+  }
+]

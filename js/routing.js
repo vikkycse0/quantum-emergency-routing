@@ -1,445 +1,417 @@
-// ═══════════════════════════════════════
-// ROUTING MODULE — OSRM API (Open Source Routing Machine)
-// Draws routes on Leaflet map without API key
-// ═══════════════════════════════════════
+// ============================================================
+// ROUTING MODULE — OSRM Road Corridors & Two-Phase Emergency Dispatch
+// QERI (Quantum Emergency Routing Intelligence)
+// ============================================================
 
-async function fetchRouteArray(p1, p2, useAlts = false) {
+let isAmbulanceEnRoute = false;
+let currentActiveRoute = null;
+
+async function fetchRouteArray(p1, p2, useAlts) {
+    try {
+        const res = await fetch(`${CONFIG.BACKEND_API_BASE}/route/calculate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                originLat: p1.lat,
+                originLng: p1.lng,
+                destLat: p2.lat,
+                destLng: p2.lng,
+                requestAlternatives: !!useAlts
+            })
+        });
+        if (res.ok) {
+            const data = await res.json();
+            if (Array.isArray(data.routes) && data.routes.length > 0) {
+                return data.routes;
+            }
+        }
+    } catch (e) {
+        console.warn('[BACKEND ROUTE] Falling back to direct browser OSRM:', e.message);
+    }
+
     const alts = useAlts ? 'true' : 'false';
     const url = `https://router.project-osrm.org/route/v1/driving/${p1.lng},${p1.lat};${p2.lng},${p2.lat}?overview=full&geometries=geojson&alternatives=${alts}`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error('OSRM API Error');
-    const data = await res.json();
-    
-    if (!data.routes || data.routes.length === 0) throw new Error('No routes found');
-    
-    return data.routes.map(r => ({
-        path: r.geometry.coordinates.map(c => [c[1], c[0]]), // OSRM gives [lng,lat], map needs [lat,lng]
-        duration: r.duration, // in seconds
-        distance: r.distance  // in meters
-    }));
+
+    try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('OSRM HTTP error');
+        const data = await res.json();
+        if (data.routes && data.routes.length > 0) {
+            return data.routes.map((r, i) => ({
+                route_id:     `OSRM-R${i + 1}`,
+                name:         i === 0 ? 'Primary Road Corridor' : `Alternative Corridor ${i}`,
+                path:         r.geometry.coordinates.map(c => [c[1], c[0]]),
+                duration_sec: r.duration,
+                duration_min: Math.round(r.duration / 60 * 10) / 10,
+                distance_m:   r.distance,
+                distance_km:  Math.round(r.distance / 1000 * 10) / 10,
+                source:       'OSRM Live Road Engine'
+            }));
+        }
+    } catch (e) {
+        console.warn('[OSRM] Query failed, using geometric fallback:', e.message);
+    }
+
+    const dKm = haversine(p1.lat, p1.lng, p2.lat, p2.lng);
+    const durMin = Math.round((dKm / 38.0) * 60 * 10) / 10;
+    return [{
+        route_id:     'FALLBACK-R1',
+        name:         'Direct estimate (road routing unavailable)',
+        path:         [[p1.lat, p1.lng], [p2.lat, p2.lng]],
+        duration_sec: Math.max(30, durMin * 60),
+        duration_min: durMin,
+        distance_m:   dKm * 1000,
+        distance_km:  Math.round(dKm * 10) / 10,
+        source:       'Geometric corridor estimation'
+    }];
 }
 
-// Calculate routes and draw on Leaflet
-async function calculateRoutes() {
-    if (!selectedHosp) return;
-    const btn = document.getElementById('calcBtn');
+// ── TWO-PHASE AUTO DISPATCH FLOW ─────────────────────────────
+
+async function callAmbulanceAuto() {
+    const btn = document.getElementById('autoDispatchBtn');
+    if (!btn) return;
     btn.disabled = true;
-    btn.textContent = '⏳ Calculating OpenRouting...';
+    btn.innerHTML = '⏳ Matching available response unit...';
 
     clearRoutePolylines();
     clearAnimation();
+    isAmbulanceEnRoute = false;
+
+    const curLat = currentLocation.latitude !== null ? currentLocation.latitude : null;
+    const curLng = currentLocation.longitude !== null ? currentLocation.longitude : null;
+
+    if (curLat === null || curLng === null) {
+        btn.disabled = false;
+        btn.innerHTML = '🚨 AUTO-DISPATCH (AI-MATCHED UNIT)';
+        alert('No valid location. Allow GPS or activate Demo Location first.');
+        return;
+    }
 
     try {
-        // Phase 1: Ambulance → User
-        const p1Routes = await fetchRouteArray(
-            { lat: ambLat, lng: ambLng },
-            { lat: userLat, lng: userLng },
-            false
-        );
-
-        const p1 = p1Routes[0];
-        const p1Time = p1.duration / 60;
-        const p1Dist = p1.distance / 1000;
-
-        // Draw Phase 1 on Leaflet
-        const p1Path = drawRoute(p1.path, '#22d3ee', 5, 0.9, '12 6');
-
-        // Phase 2: User → Hospital (Generate artificially distinct routes using waypoints)
-        // Normal Route (Direct)
-        const pA = { lat: userLat, lng: userLng };
-        const pB = { lat: selectedHosp.lat, lng: selectedHosp.lng };
-        
-        let routes = [];
-        
-        // 1. Fetch direct route
-        try {
-            const dirRoutes = await fetchRouteArray(pA, pB, false);
-            if (dirRoutes.length > 0) routes.push({ ...dirRoutes[0], type: 'Optimised' });
-        } catch(e) {}
-        
-        // 2. Fetch alternative routes via geometric offsets
-        const latDiff = pB.lat - pA.lat;
-        const lngDiff = pB.lng - pA.lng;
-        const mid = { lat: pA.lat + latDiff * 0.5, lng: pA.lng + lngDiff * 0.5 };
-        
-        // Perpendicular offset 1
-        const w1 = { lat: mid.lat - lngDiff * 0.3, lng: mid.lng + latDiff * 0.3 };
-        // Perpendicular offset 2
-        const w2 = { lat: mid.lat + lngDiff * 0.2, lng: mid.lng - latDiff * 0.2 };
-        
-        async function fetchViaWaypoint(p1, wp, p2) {
-            const url = `https://router.project-osrm.org/route/v1/driving/${p1.lng},${p1.lat};${wp.lng},${wp.lat};${p2.lng},${p2.lat}?overview=full&geometries=geojson`;
-            const res = await fetch(url);
-            if (!res.ok) return null;
-            const data = await res.json();
-            if (!data.routes || !data.routes.length) return null;
-            const r = data.routes[0];
-            return {
-                path: r.geometry.coordinates.map(c => [c[1], c[0]]),
-                duration: r.duration,
-                distance: r.distance
-            };
-        }
-
-        const alt1 = await fetchViaWaypoint(pA, w1, pB);
-        if (alt1) routes.push({ ...alt1, type: 'Open' });
-        
-        const alt2 = await fetchViaWaypoint(pA, w2, pB);
-        if (alt2) routes.push({ ...alt2, type: 'Normal' });
-
-        // Sort by duration descending (longest to shortest)
-        routes.sort((a, b) => b.duration - a.duration);
-
-        // Ensure we have exactly 3 routes to display
-        while (routes.length < 3) {
-            if (routes.length === 0) throw new Error('No routes could be mapped.');
-            const last = routes[routes.length - 1];
-            routes.push({ 
-                ...last, 
-                duration: last.duration * 0.92,
-                distance: last.distance * 0.95 
-            });
-        }
-
-        const normalR = routes[0];
-        const optimalR = routes[1];
-        const quantumR = routes[2];
-
-        // Draw Phase 2 routes on Leaflet
-        const colors = ['#f87171', '#fbbf24', '#c084fc'];
-        const weights = [4, 5, 7];
-        const opacities = [0.6, 0.7, 0.95];
-
-        let qPath = [];
-        [normalR, optimalR, quantumR].forEach((r, i) => {
-            const path = drawRoute(r.path, colors[i], weights[i], opacities[i]);
-            if (i === 2) qPath = path; // quantum path for animation
+        const res = await fetch(`${CONFIG.BACKEND_API_BASE}/simulate_dispatch`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                caseId:        activeCaseId,
+                userLat:       curLat,
+                userLng:       curLng,
+                hospitalId:    selectedHosp ? selectedHosp.id : null,
+                hospitalName:  selectedHosp ? selectedHosp.name : null,
+                hospitalLat:   selectedHosp ? selectedHosp.lat : null,
+                hospitalLng:   selectedHosp ? selectedHosp.lng : null,
+                emergencyType: currentEmergencyType,
+                solverMode:    typeof currentSolverMode !== 'undefined' ? currentSolverMode : 'topsis'
+            })
         });
 
-        // Total times
-        const nTime = p1Time + normalR.duration / 60;
-        const oTime = p1Time + optimalR.duration / 60;
-        const qTime = p1Time + quantumR.duration / 60;
-        const worst = Math.max(nTime, oTime, qTime);
-        const savingPct = ((nTime - qTime) / nTime * 100);
+        if (res.ok) {
+            const data = await res.json();
 
-        // Animate ambulance along quantum route
-        animateAmbulance([...p1Path, ...qPath]);
+            activeCaseId = data.case_id;
+            const caseDom = document.getElementById('uCaseId');
+            if (caseDom) caseDom.textContent = `#${activeCaseId}`;
 
-        // Update UI
-        renderRouteResults(p1Time, p1Dist, '📍 OpenRoute', normalR, optimalR, quantumR, nTime, oTime, qTime, worst, savingPct);
-        updateStatus('simDot', 'g', 'simText', 'Routes Live');
+            // 1. Reposition ambulance station to assigned unit real coordinates
+            if (data.ambulance_coords) {
+                window.ambLat = data.ambulance_coords[0];
+                window.ambLng = data.ambulance_coords[1];
+            }
+            const assignedMarker = fleetMarkersById[data.assigned_ambulance];
+            if (assignedMarker) assignedMarker.setLatLng(data.ambulance_coords);
 
-        // Bridge to Python Backend Simulation (FastAPI) silently
-        try {
-            await fetch('http://127.0.0.1:8001/api/simulate_dispatch', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    userLat: userLat, userLng: userLng,
-                    hospitalLat: selectedHosp.lat, hospitalLng: selectedHosp.lng
-                })
+            // 2. Phase 1: Base Station -> Patient (prefer backend-computed corridor)
+            let p1 = data.phase1_route;
+            if (!p1 || !Array.isArray(p1.path) || p1.path.length < 2) {
+                const p1Routes = await fetchRouteArray(
+                    { lat: window.ambLat, lng: window.ambLng },
+                    { lat: curLat, lng: curLng },
+                    false
+                );
+                p1 = p1Routes[0];
+            }
+            drawRoute(p1.path, '#38bdf8', 5, 0.9, '12 6');
+
+            // 3. Phase 2: Patient -> Selected Hospital (draw alternatives + highlight optimal corridor)
+            const targetHospName = (data.selected_hospital && data.selected_hospital.name)
+                ? data.selected_hospital.name
+                : (selectedHosp ? selectedHosp.name : "Healthcare Center");
+
+            const p2Routes = data.candidate_routes;
+            if (!Array.isArray(p2Routes) || p2Routes.length === 0 || !data.selected_route) {
+                throw new Error('Dispatch API did not return an optimized road route.');
+            }
+            const selectedP2 = data.selected_route;
+            currentActiveRoute = selectedP2;
+            p2Routes.forEach((r, idx) => {
+                if (idx !== data.selected_route_index) {
+                    drawRoute(r.path, '#94a3b8', 4, 0.45, '6 6');
+                }
             });
-        } catch(e) {}
+            drawRoute(selectedP2.path, '#22c55e', 7, 0.95);
 
-    } catch (err) {
-        console.error('Routing error:', err);
-        alert('Routing failed. Could not fetch paths from OSRM.');
+            document.getElementById('aiPanel').style.display = 'block';
+            document.getElementById('aiOutput').textContent = data.explainability_report;
+
+            if (typeof logMissionMilestone === 'function') {
+                logMissionMilestone(getTimestamp(), `🚨 Unit Dispatched: ${data.assigned_ambulance}`, `Equipment: ${data.ambulance_capabilities.join(', ')} · Projected Response: ${data.ambulance_to_patient_eta_min}m`, 'danger');
+            }
+
+            // 4. Render two-phase route comparison & multi-solver benchmark
+            renderRouteComparison(p1, p2Routes, {
+                selected_route_index: data.selected_route_index,
+                optimization_method: data.optimization_method,
+                improvement_pct: data.improvement_pct,
+                selected_ai_breakdown: data.selected_ai_breakdown,
+                solver_comparison: data.solver_comparison
+            }, data.ai_prediction);
+
+            if (typeof refreshAuditTelemetry === 'function') {
+                refreshAuditTelemetry();
+            }
+
+            // 5. Start Two-Phase Live Mission Animation (Base -> Patient -> Hospital)
+            isAmbulanceEnRoute = true;
+            animateFullEmergencyMission(p1.path, selectedP2.path, targetHospName, data.assigned_ambulance,
+                p1.duration_sec, selectedP2.duration_sec);
+
+            const fb = data.is_capability_fallback ? ' (capability fallback)' : '';
+            const estimatedRoute = selectedP2.source && selectedP2.source.toLowerCase().includes('fallback');
+            updateStatus('simDot', estimatedRoute ? 'y' : 'b', 'simText',
+                `Active: ${data.assigned_ambulance}${fb}${estimatedRoute ? ' · estimated route' : ''}`);
+        } else {
+            const error = await res.json().catch(() => null);
+            const detail = error && error.detail ? error.detail : `Dispatch API returned HTTP ${res.status}`;
+            throw new Error(detail);
+        }
+    } catch (e) {
+        console.error('[AUTO DISPATCH ERROR]', e);
+        alert(`Dispatch could not be completed: ${e.message}`);
     } finally {
         btn.disabled = false;
-        btn.textContent = '⚡ Calculate Open Routes';
+        btn.innerHTML = '🚨 AUTO-DISPATCH (AI-MATCHED UNIT)';
     }
 }
 
-function renderRouteResults(p1Time, p1Dist, trafficTag, normalR, optimalR, quantumR, nTime, oTime, qTime, worst, savingPct) {
+// ── MANUAL ROUTE CALCULATION ─────────────────────────────────
+
+async function calculateRoutes() {
+    if (!selectedHosp) return;
+
+    const btn = document.getElementById('calcBtn');
+    btn.disabled = true;
+    btn.textContent = '⏳ Querying road corridors and risk optimizer...';
+
+    clearRoutePolylines();
+    clearAnimation();
+    isAmbulanceEnRoute = false;
+
+    try {
+        const curLat = currentLocation.latitude !== null ? currentLocation.latitude : null;
+        const curLng = currentLocation.longitude !== null ? currentLocation.longitude : null;
+
+        if (curLat === null || curLng === null) {
+            alert('No valid location available. Allow GPS or use Demo Location first.');
+            return;
+        }
+
+        if (typeof logMissionMilestone === 'function') {
+            logMissionMilestone(getTimestamp(), 'Generating Road Corridors', `Patient ➔ ${selectedHosp.name}`, 'info');
+        }
+
+        const candidateRoutes = await fetchRouteArray({ lat: curLat, lng: curLng }, { lat: selectedHosp.lat, lng: selectedHosp.lng }, true);
+
+        // Backend multi-factor risk scoring and route optimization
+        let optData = null;
+        let aiPredData = null;
+        try {
+            const optRes = await fetch(`${CONFIG.BACKEND_API_BASE}/route/optimize`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    candidateRoutes: candidateRoutes,
+                    emergencyType: currentEmergencyType,
+                    severity: currentSeverity,
+                    solverMode: typeof currentSolverMode !== 'undefined' ? currentSolverMode : 'topsis'
+                })
+            });
+            if (optRes.ok) {
+                const j = await optRes.json();
+                optData = j.optimization;
+            }
+
+            if (optData && optData.selected_ai_breakdown) {
+                aiPredData = optData.selected_ai_breakdown.ai_telemetry || null;
+            }
+        } catch (e) {
+            console.warn('[ROUTE OPTIMIZER] Backend optimizer offline, using baseline calculation.');
+        }
+
+        const colors = ['#22c55e', '#fbbf24', '#c084fc'];
+        const selIdx = optData ? optData.selected_route_index : 0;
+        currentActiveRoute = candidateRoutes[selIdx] || candidateRoutes[0];
+
+        candidateRoutes.forEach((r, i) => {
+            const color = colors[i % colors.length];
+            const isOpt = i === selIdx;
+            drawRoute(r.path, color, isOpt ? 7 : 4, isOpt ? 0.95 : 0.55);
+        });
+
+        renderRouteComparison(null, candidateRoutes, optData, aiPredData);
+
+        if (typeof logMissionMilestone === 'function' && optData) {
+            logMissionMilestone(getTimestamp(), `Route Selected (${optData.optimization_method})`, `Selected: ${candidateRoutes[selIdx].name} · Cost improvement: ${optData.improvement_pct}%`, 'quantum');
+        }
+        const aiPanel = document.getElementById('aiPanel');
+        const aiOutput = document.getElementById('aiOutput');
+        if (aiPanel && aiOutput) {
+            aiPanel.style.display = 'block';
+            aiOutput.textContent = [
+                'ROUTE RECOMMENDATION (not dispatched)',
+                `Destination: ${selectedHosp.name}`,
+                `Selected corridor: ${currentActiveRoute.name}`,
+                `Optimization: ${optData ? optData.optimization_method : 'Baseline route'}`,
+                `Predicted travel time: ${currentActiveRoute.duration_min} minutes`,
+                `Distance: ${currentActiveRoute.distance_km} km`,
+                `Traffic prediction: ${aiPredData ? aiPredData.predicted_congestion : 'Unavailable'}`
+            ].join('\n');
+        }
+
+    } catch (err) {
+        console.error('[ROUTING ERROR]', err);
+        alert('Route calculation error: ' + err.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '⚡ Calculate Road Corridors & Optimize';
+    }
+}
+
+function renderRouteComparison(p1, candidateRoutes, optData, aiPredData) {
     document.getElementById('routesCard').style.display = 'block';
     document.getElementById('rpanel').style.display = 'flex';
 
-    document.getElementById('routesList').innerHTML = `
-        ${p1Time > 0 ? `
-        <div style="font-size:11px;color:var(--dim);margin-bottom:8px;padding:6px 8px;background:rgba(34,211,238,0.08);border-radius:8px;border:1px solid rgba(34,211,238,0.2)">
-            <strong>Phase 1</strong> (Amb → You): <strong style="color:#22d3ee">${p1Time.toFixed(1)} min</strong> · ${p1Dist.toFixed(1)} km · ${trafficTag}
-        </div>` : ''}
-        <div class="route-card normal">
-            <div class="route-header">
-                <div class="route-label" style="color:#f87171">🔴 Normal Route <span class="route-badge tag-slow">Slowest</span></div>
-                <div class="route-time" style="color:#f87171">${nTime.toFixed(1)}m</div>
-            </div>
-            <div class="route-meta">${(normalR.duration/60).toFixed(1)} min · ${(normalR.distance/1000).toFixed(1)} km</div>
-            <div class="route-bar" style="background:#f87171;width:100%"></div>
-        </div>
-        <div class="route-card optimal">
-            <div class="route-header">
-                <div class="route-label" style="color:#fbbf24">🟡 Open Route <span class="route-badge tag-traffic">Traffic-Aware</span></div>
-                <div class="route-time" style="color:#fbbf24">${oTime.toFixed(1)}m</div>
-            </div>
-            <div class="route-meta">${(optimalR.duration/60).toFixed(1)} min · ${(optimalR.distance/1000).toFixed(1)} km</div>
-            <div class="route-bar" style="background:#fbbf24;width:${(oTime/worst*100).toFixed(0)}%"></div>
-        </div>
-        <div class="route-card quantum best">
-            <div class="route-header">
-                <div class="route-label" style="color:#c084fc">⚛ Optimised Route <span class="route-badge tag-best">Fastest</span></div>
-                <div class="route-time" style="color:#c084fc">${qTime.toFixed(1)}m</div>
-            </div>
-            <div class="route-meta">${(quantumR.duration/60).toFixed(1)} min · ${(quantumR.distance/1000).toFixed(1)} km</div>
-            <div class="route-bar" style="background:#c084fc;width:${(qTime/worst*100).toFixed(0)}%"></div>
-        </div>
-    `;
+    const selIdx      = optData ? optData.selected_route_index : 0;
+    const optMethod   = optData ? optData.optimization_method : 'Baseline (OSRM)';
+    const improvement = optData ? optData.improvement_pct : null;
 
-    document.getElementById('savingsVal').textContent = `${savingPct.toFixed(1)}%`;
+    let html = '';
+    if (p1) {
+        html = `<div style="font-size:11px;color:var(--text-dim);padding:6px 10px;background:rgba(56,189,248,0.1);border:1px solid rgba(56,189,248,0.3);border-radius:8px;margin-bottom:8px">
+            <strong>Phase 1 (Response):</strong> <strong style="color:#38bdf8">${p1.duration_min} min</strong> · ${p1.distance_km} km
+        </div>`;
+    }
+
+    candidateRoutes.forEach((r, i) => {
+        const isSel       = i === selIdx;
+        const totalMission = Math.round(((p1 ? p1.duration_min : 0) + r.duration_min) * 10) / 10;
+        const badge       = isSel ? `Selected (${optMethod})` : (i === 0 ? 'Baseline' : 'Alternative');
+        html += `<div class="route-card ${isSel ? 'quantum best' : 'normal'}">
+            <div class="route-header">
+                <div class="route-label" style="color:${isSel ? '#c084fc' : '#f87171'}">
+                    ${escapeHTML(r.name)} <span class="route-badge ${isSel ? 'tag-best' : 'tag-slow'}">${escapeHTML(badge)}</span>
+                </div>
+                <div class="route-time">${totalMission}m</div>
+            </div>
+            <div class="route-meta">${p1 ? 'Phase 2 (Transport)' : 'Patient to hospital'}: ${r.duration_min} min · ${r.distance_km} km · ${escapeHTML(r.source)}</div>
+            <div style="font-size:10px;color:#38bdf8;margin-top:4px">${p1 ? 'Total Projected Mission Time' : 'Projected drive time'}: <strong>${totalMission} mins</strong></div>
+        </div>`;
+    });
+
+    document.getElementById('routesList').innerHTML = html;
+    document.getElementById('savingsVal').textContent = improvement === null ? '—' : `${improvement.toFixed(1)}%`;
+
+    const selRoute = candidateRoutes[selIdx] || candidateRoutes[0];
+    const totalMissionMin = selRoute ? Math.round(((p1 ? p1.duration_min : 0) + selRoute.duration_min) * 10) / 10 : null;
+    const totalEtaEl = document.getElementById('totalMissionEtaVal');
+    if (totalEtaEl) totalEtaEl.textContent = totalMissionMin !== null ? `${totalMissionMin}m` : '—';
+
+    const cong = aiPredData ? aiPredData.predicted_congestion : 'Unavailable';
+    const rel = aiPredData && Number.isFinite(aiPredData.reliability_indicator_pct)
+        ? `${aiPredData.reliability_indicator_pct}%`
+        : 'Unavailable';
+    const weatherSnap = optData && optData.selected_ai_breakdown
+        ? (optData.selected_ai_breakdown.weather_telemetry || {})
+        : {};
+    const rainMm = Number.isFinite(weatherSnap.max_rain_along_corridor_mm)
+        ? `${weatherSnap.max_rain_along_corridor_mm} mm`
+        : 'Unavailable';
+
     document.getElementById('compareBars').innerHTML = `
-        <div class="compare-bar"><div class="compare-row"><span style="color:#f87171">🔴 Normal Route</span><span><strong>${nTime.toFixed(1)}</strong> min</span></div><div class="compare-track"><div class="compare-fill" style="width:100%;background:#f87171"></div></div></div>
-        <div class="compare-bar"><div class="compare-row"><span style="color:#fbbf24">🟡 Open Route</span><span><strong>${oTime.toFixed(1)}</strong> min</span></div><div class="compare-track"><div class="compare-fill" style="width:${(oTime/worst*100).toFixed(0)}%;background:#fbbf24"></div></div></div>
-        <div class="compare-bar"><div class="compare-row"><span style="color:#c084fc">⚛ Optimised Route</span><span><strong>${qTime.toFixed(1)}</strong> min</span></div><div class="compare-track"><div class="compare-fill" style="width:${(qTime/worst*100).toFixed(0)}%;background:#c084fc"></div></div></div>
-        
-        <div style="margin-top:20px; padding:15px; background:rgba(192,132,252,0.05); border-radius:8px; border:1px solid rgba(192,132,252,0.3); text-align:center;">
-             <div style="font-size:11px; color:#888; text-transform:uppercase; letter-spacing:1px; margin-bottom:5px;">Live Ambulance ETA Decay</div>
-             <div id="liveDecayTimer" style="font-size:32px; font-weight:800; color:#c084fc;">${qTime.toFixed(1)} <span style="font-size:14px;color:#aaa;font-weight:normal;">min</span></div>
-        </div>
+        <div class="compare-row"><span>Optimization Engine</span><span style="color:#c084fc;font-weight:700">${escapeHTML(optMethod)}</span></div>
+        <div class="compare-row"><span>AI Congestion Index</span><span style="color:#38bdf8;font-weight:700">${cong}</span></div>
+        <div class="compare-row"><span>ETA Model Reliability</span><span style="color:var(--text);font-family:monospace">${rel}</span></div>
+        <div class="compare-row"><span>Corridor Rain Intensity</span><span style="color:#38bdf8;font-family:monospace">${rainMm}</span></div>
     `;
 
-    // Global linkage for the animation loop to bind to and dynamically decay
-    window.currentLiveETA = qTime;
-}
-
-// Auto Dispatch logic: Route immediate from Ambulance -> User pin
-async function callAmbulanceAuto() {
-    const btn = document.getElementById('autoDispatchBtn');
-    btn.disabled = true;
-    btn.innerHTML = '⏳ Dispatching Unit...';
-    
-    clearRoutePolylines();
-    clearAnimation();
-    
-    try {
-        // Compute 3 disparate routes from the Ambulance Base to the User's Phone
-        const pA = { lat: ambLat, lng: ambLng };
-        const pB = { lat: userLat, lng: userLng };
-        
-        let routes = [];
-        
-        // 1. Direct standard route
-        try {
-            const dirRoutes = await fetchRouteArray(pA, pB, false);
-            if (dirRoutes.length > 0) routes.push(dirRoutes[0]);
-        } catch(e) {}
-        
-        // 2. Fetch alternative physical routes using mathematical coordinate offset waypoints
-        const latDiff = pB.lat - pA.lat;
-        const lngDiff = pB.lng - pA.lng;
-        const mid = { lat: pA.lat + latDiff * 0.5, lng: pA.lng + lngDiff * 0.5 };
-        
-        const w1 = { lat: mid.lat - lngDiff * 0.35, lng: mid.lng + latDiff * 0.35 };
-        const w2 = { lat: mid.lat + lngDiff * 0.25, lng: mid.lng - latDiff * 0.25 };
-        
-        async function fetchViaWaypoint(wp) {
-            const url = `https://router.project-osrm.org/route/v1/driving/${pA.lng},${pA.lat};${wp.lng},${wp.lat};${pB.lng},${pB.lat}?overview=full&geometries=geojson`;
-            const res = await fetch(url);
-            if (!res.ok) return null;
-            const data = await res.json();
-            if (!data.routes || !data.routes.length) return null;
-            return {
-                path: data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]),
-                duration: data.routes[0].duration, distance: data.routes[0].distance
-            };
-        }
-
-        const alt1 = await fetchViaWaypoint(w1);
-        if (alt1) routes.push(alt1);
-        
-        const alt2 = await fetchViaWaypoint(w2);
-        if (alt2) routes.push(alt2);
-
-        // Sort by duration descending (longest to shortest)
-        routes.sort((a, b) => b.duration - a.duration);
-
-        // Ensure we have exactly 3 fallback routes with visually distinct geometries
-        while (routes.length < 3) {
-            if (routes.length === 0) {
-                 // True Fallback if OSRM API is completely offline
-                 routes.push({
-                     path: [[pA.lat, pA.lng], [(pA.lat+pB.lat)/2, (pA.lng+pB.lng)/2 + 0.005], [pB.lat, pB.lng]],
-                     duration: 420.0,
-                     distance: 1500.0
-                 });
-            }
-            const last = routes[routes.length - 1];
-            
-            // Mathematically 'bow' the shape of the geometry so they don't perfectly overlap
-            const bowedPath = last.path.map((coord, idx, arr) => {
-                if (idx > 0 && idx < arr.length - 1) {
-                    const toggleDirection = routes.length === 1 ? 0.002 : -0.002; 
-                    const curveMultiplier = Math.sin((idx / arr.length) * Math.PI) * toggleDirection;
-                    return [coord[0] + curveMultiplier, coord[1] + (curveMultiplier / 2)];
-                }
-                return coord;
-            });
-
-            routes.push({ 
-                path: bowedPath, 
-                duration: last.duration * 0.85,  // make it mathematically faster to simulate it being the AI choice
-                distance: last.distance * 0.90 
-            });
-        }
-
-        const normalR = routes[0]; // Slowest standard route
-        const optimalR = routes[1]; // Alternative route
-        const quantumR = routes[2]; // AI Optimised Route
-        
-        const colors = ['#f87171', '#fbbf24', '#c084fc']; // Red, Yellow, Purple (Optimal)
-        const weights = [3, 4, 7];
-        const opacities = [0.4, 0.6, 1.0];
-
-        let drawnPath = [];
-        let eta = quantumR.duration / 60;
-        if(isNaN(eta)) { eta = 6.0; }
-
-        // Draw all routes on map
-        [normalR, optimalR, quantumR].forEach((r, i) => {
-            const pathInfo = drawRoute(r.path, colors[i], weights[i], opacities[i], i === 2 ? '10 5' : 'none');
-            if (i === 2) drawnPath = pathInfo; // We track along the green optimized path
-        });
-        
-        const nTime = normalR.duration / 60 || 12;
-        const oTime = optimalR.duration / 60 || 9;
-        const qTime = quantumR.duration / 60 || 6;
-        const worst = Math.max(nTime, oTime, qTime);
-        const savingPct = ((nTime - qTime) / nTime * 100);
-
-        // Display the three routes visually on the sidebar!
-        renderRouteResults(0, 0, 'Live Dispatch', normalR, optimalR, quantumR, nTime, oTime, qTime, worst, savingPct);
-
-        // Start global absolute time synchronization
-        window.globalDispatchStartTime = Date.now();
-
-        // Fire API request targeting user location synchronously pushing the exact geometry payload up to the python socket bridge
-        try {
-            await fetch('/api/simulate_dispatch', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    userLat: userLat, userLng: userLng,
-                    hospitalLat: userLat, hospitalLng: userLng,
-                    eta: qTime,
-                    route_path: drawnPath,
-                    hosp_name: selectedHosp ? selectedHosp.name : "Quantum Base",
-                    start_time: window.globalDispatchStartTime
-                })
-            });
-        } catch(e) {}
-        
-        // Physically track the ambulance across the map to user location
-        animateAmbulance(drawnPath);
-        updateStatus('simDot', 'g', 'simText', 'Ambulance En Route');
-        
-    } catch (err) {
-        console.error(err);
-        alert("Failed to track vehicle network.");
-    } finally {
-        btn.disabled = false;
-        btn.innerHTML = '🚨 CALL AMBULANCE NOW (AUTO-TRACK)';
+    const benchCard = document.getElementById('solverComparisonCard');
+    const benchBody = document.getElementById('solverComparisonBody');
+    const comp = optData && optData.solver_comparison ? optData.solver_comparison : null;
+    if (benchCard && benchBody && comp && Object.keys(comp).length > 0) {
+        benchCard.style.display = 'block';
+        benchBody.innerHTML = Object.entries(comp).map(([key, info]) => {
+            const isActive = (typeof currentSolverMode !== 'undefined' && currentSolverMode === key);
+            return `<div class="compare-row" style="${isActive ? 'background:rgba(192,132,252,0.1);padding:6px;border-radius:6px' : ''}">
+                <span style="font-weight:${isActive ? '800' : '600'};color:${isActive ? '#c084fc' : 'var(--text-dim)'}">${key.toUpperCase()}</span>
+                <span style="font-size:10px;color:var(--text)">${escapeHTML(info.selected_route_name)}</span>
+                <span style="font-family:monospace;font-size:10px;color:#38bdf8">${info.objective_cost} (${info.execution_time_ms}ms)</span>
+            </div>`;
+        }).join('');
     }
 }
 
-window.isReturningToHospital = false;
+async function checkDynamicReroute() {
+    if (!isAmbulanceEnRoute || !selectedHosp) return;
+    const inPhase2 = (typeof currentMissionPhase !== 'undefined' && currentMissionPhase === 'en_route_to_hospital');
+    const originLat = inPhase2 ? window.ambLat : currentLocation.latitude;
+    const originLng = inPhase2 ? window.ambLng : currentLocation.longitude;
+    if (originLat === null || originLat === undefined) return;
 
-window.triggerReturnTrip = async function() {
-    window.isReturningToHospital = true;
-    updateStatus('simDot', 'g', 'simText', 'Returning to Hospital');
-    const btn = document.getElementById('autoDispatchBtn');
-    if(btn) { btn.innerHTML = '🚑 RETURN TO BASE LIVE'; }
-
-    clearRoutePolylines();
-    clearAnimation();
-    
     try {
-        // Reverse parameters: User Location -> Hospital Base
-        const pA = { lat: userLat, lng: userLng };
-        const pB = { lat: ambLat, lng: ambLng }; 
-        
-        let routes = [];
-        
-        try {
-            const dirRoutes = await fetchRouteArray(pA, pB, false);
-            if (dirRoutes.length > 0) routes.push(dirRoutes[0]);
-        } catch(e) {}
-        
-        const latDiff = pB.lat - pA.lat;
-        const lngDiff = pB.lng - pA.lng;
-        const mid = { lat: pA.lat + latDiff * 0.5, lng: pA.lng + lngDiff * 0.5 };
-        
-        const w1 = { lat: mid.lat - lngDiff * 0.35, lng: mid.lng + latDiff * 0.35 };
-        const w2 = { lat: mid.lat + lngDiff * 0.25, lng: mid.lng - latDiff * 0.25 };
-        
-        async function fetchViaWaypoint(wp) {
-            const url = `https://router.project-osrm.org/route/v1/driving/${pA.lng},${pA.lat};${wp.lng},${wp.lat};${pB.lng},${pB.lat}?overview=full&geometries=geojson`;
-            const res = await fetch(url);
-            if (!res.ok) return null;
-            const data = await res.json();
-            if (!data.routes || !data.routes.length) return null;
-            return {
-                path: data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]),
-                duration: data.routes[0].duration, distance: data.routes[0].distance
-            };
-        }
-
-        const alt1 = await fetchViaWaypoint(w1);
-        if (alt1) routes.push(alt1);
-        
-        const alt2 = await fetchViaWaypoint(w2);
-        if (alt2) routes.push(alt2);
-
-        routes.sort((a, b) => b.duration - a.duration);
-
-        while (routes.length < 3) {
-            if (routes.length === 0) {
-                 routes.push({
-                     path: [[pA.lat, pA.lng], [(pA.lat+pB.lat)/2, (pA.lng+pB.lng)/2 + 0.005], [pB.lat, pB.lng]],
-                     duration: 420.0, distance: 1500.0
-                 });
-            }
-            const last = routes[routes.length - 1];
-            const bowedPath = last.path.map((coord, idx, arr) => {
-                if (idx > 0 && idx < arr.length - 1) {
-                    const toggleDirection = routes.length === 1 ? 0.002 : -0.002; 
-                    const curveMultiplier = Math.sin((idx / arr.length) * Math.PI) * toggleDirection;
-                    return [coord[0] + curveMultiplier, coord[1] + (curveMultiplier / 2)];
-                }
-                return coord;
-            });
-            routes.push({ path: bowedPath, duration: last.duration * 0.85, distance: last.distance * 0.90 });
-        }
-
-        const normalR = routes[0];
-        const optimalR = routes[1];
-        const quantumR = routes[2];
-        
-        const colors = ['#f87171', '#fbbf24', '#c084fc'];
-        const weights = [3, 4, 7];
-        const opacities = [0.4, 0.6, 1.0];
-
-        let drawnPath = [];
-        let eta = quantumR.duration / 60;
-        if(isNaN(eta)) { eta = 6.0; }
-
-        [normalR, optimalR, quantumR].forEach((r, i) => {
-            const pathInfo = drawRoute(r.path, colors[i], weights[i], opacities[i], i === 2 ? '10 5' : 'none');
-            if (i === 2) drawnPath = pathInfo;
+        const res = await fetch(`${CONFIG.BACKEND_API_BASE}/route/reroute`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                currentLat:     originLat,
+                currentLng:     originLng,
+                destLat:        selectedHosp.lat,
+                destLng:        selectedHosp.lng,
+                originalEtaSec: currentActiveRoute && currentActiveRoute.duration_sec
+                    ? currentActiveRoute.duration_sec
+                    : 600.0,
+                emergencyType:  currentEmergencyType,
+                solverMode:     typeof currentSolverMode !== 'undefined' ? currentSolverMode : 'topsis',
+                caseId:         activeCaseId
+            })
         });
+        if (!res.ok) return;
+        const json = await res.json();
+        const result = json.result;
+        if (result.reroute_triggered) {
+            showRerouteAlert(result.reason, result.new_projected_eta_min, result.time_saved_min);
+            if (typeof logMissionMilestone === 'function') {
+                logMissionMilestone(getTimestamp(), '🔄 Dynamic Rerouting Executed', `${result.reason} · New ETA: ${result.new_projected_eta_min}m (Saved: ${result.time_saved_min}m)`, 'danger');
+            }
+            clearRoutePolylines();
+            currentActiveRoute = result.selected_route;
+            drawRoute(result.selected_route.path, '#22c55e', 7, 0.95);
+            if (inPhase2) {
+                const newPath = interpolatePath(result.selected_route.path, 240);
+                startPhase2(newPath, selectedHosp.name, document.getElementById('hudUnitId').textContent,
+                    document.getElementById('hudUnitName').textContent, result.selected_route.duration_sec);
+            }
+            if (typeof refreshAuditTelemetry === 'function') refreshAuditTelemetry();
+        }
+    } catch (e) {}
+}
 
-        const nTime = normalR.duration / 60 || 12;
-        const oTime = optimalR.duration / 60 || 9;
-        const qTime = quantumR.duration / 60 || 6;
-        const worst = Math.max(nTime, oTime, qTime);
-        const savingPct = ((nTime - qTime) / nTime * 100);
-
-        renderRouteResults(0, 0, 'Phase 2: Return', normalR, optimalR, quantumR, nTime, oTime, qTime, worst, savingPct);
-        
-        // Physically track the ambulance across the map back to the hospital
-        animateAmbulance(drawnPath);
-        updateStatus('simDot', 'g', 'simText', 'Target: Base Hospital');
-        
-    } catch (err) {
-        console.error("Phase 2 Routing failed.");
-    }
-};
+function showRerouteAlert(reason, newEta, saved) {
+    const toast = document.createElement('div');
+    toast.className = 'reroute-toast';
+    toast.innerHTML = `
+        <div style="font-weight:800;color:#f59e0b;font-size:13px">⚠ DYNAMIC REROUTING TRIGGERED</div>
+        <div style="font-size:11px;margin:3px 0">${escapeHTML(reason)}</div>
+        <div style="font-size:11px;color:#22c55e;font-weight:700">✓ Recalculated Optimal Corridor: ${newEta} min (Saved ${saved}m)</div>
+    `;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 6000);
+}

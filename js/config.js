@@ -1,11 +1,33 @@
 // ═══════════════════════════════════════
-// QUANTUM EMERGENCY ROUTING — CONFIG
+// QUANTUM EMERGENCY ROUTING & TRACKING — CONFIG
+// Unified Server & Standalone Compatible
 // ═══════════════════════════════════════
+
+function resolveBackendApiBase() {
+    if (window.location.protocol === 'file:') {
+        return 'http://127.0.0.1:8001/api';
+    }
+    const port = window.location.port;
+    if (port === '8001' || port === '' || port === '80' || port === '443') {
+        return `${window.location.origin}/api`;
+    }
+    return `${window.location.protocol}//${window.location.hostname}:8001/api`;
+}
+
 const CONFIG = {
-    GOOGLE_API_KEY: 'AIzaSyBPmj7_FIt239paR7LIS6z6Vk_iIQNjsYI',
-    SEARCH_RADIUS: 15000,     // 15km hospital search radius
-    ANIMATION_DELAY: 180,     // 180ms per animation frame to dramatically slow the ambulance
-    TRAIL_INTERVAL: 4,        // trail dot step rate adjusted for slower movement
-    MAX_ANIM_STEPS: 1200,     // force the engine to process way more micro-steps without skipping
-    DEFAULT_LOCATION: { lat: 17.7046, lng: 83.2926, name: 'Visakhapatnam' },
+    BACKEND_API_BASE: resolveBackendApiBase(),
+    SEARCH_RADIUS_M: 25000,
+    ANIMATION_DELAY_MS: 90,
+    TRAIL_INTERVAL_STEPS: 5,
+    MAX_ANIM_STEPS: 350,
+    DEFAULT_LOCATION: {
+        lat: 17.7046,
+        lng: 83.2926,
+        name: 'Visakhapatnam (Demo Base Station)'
+    },
+    OVERPASS_MIRRORS: [
+        'https://overpass-api.de/api/interpreter',
+        'https://lz4.overpass-api.de/api/interpreter',
+        'https://overpass.kumi.systems/api/interpreter'
+    ]
 };

@@ -1,394 +1,648 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Q-AERS Ambulance Tracking</title>
-    <!-- Fonts & Icons -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    
-    <!-- Leaflet Map library -->
+    <title>Q-AERS Mobile SOS & Live Ambulance Tracker</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
     <style>
-/* BASE VARIABLES & SETUP */
-:root {
-    --bg-color: #f1f3f6;
-    --phone-bg: #e2e8f0; 
-    --text-primary: #1e293b;
-    --text-secondary: #64748b;
-    --primary-blue: #0ea5e9;
-    --primary-blue-hover: #0284c7;
-    --danger-red: #ea1b24;
-    --danger-red-hover: #b91c1c;
-    --card-bg: #ffffff;
-    --border-color: #e2e8f0;
-    --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
-    --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
-    
-    --transition-normal: 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
-}
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap');
 
-* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+        *,
+        *::before,
+        *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
-body {
-    font-family: 'Inter', -apple-system, sans-serif;
-    background-color: var(--bg-color);
-    color: var(--text-primary);
-    display: flex; justify-content: center; align-items: center;
-    min-height: 100vh; overflow: hidden;
-}
+        :root {
+            --bg: #040711;
+            --surface: #0a0f1d;
+            --surface2: #111827;
+            --accent: #00d4ff;
+            --quantum: #c084fc;
+            --success: #10b981;
+            --danger: #f43f5e;
+            --warn: #fbbf24;
+            --text: #f8fafc;
+            --text-dim: #94a3b8;
+            --border: rgba(51, 65, 85, 0.7);
+        }
 
-.app-wrapper {
-    position: relative; width: 390px; height: 844px; max-height: 100vh;
-    border-radius: 40px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
-    overflow: hidden; display: flex; flex-direction: column;
-    border: 8px solid #cbd5e1; background: var(--phone-bg);
-}
+        html,
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
 
-@media (max-width: 480px) {
-    .app-wrapper { width: 100%; height: 100vh; border-radius: 0; border: none; }
-}
+        .phone-shell {
+            position: relative;
+            width: 100%;
+            max-width: 430px;
+            height: 100vh;
+            max-height: 900px;
+            background: var(--surface);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            border-left: 1px solid var(--border);
+            border-right: 1px solid var(--border);
+        }
 
-.phone-container { height: 100%; width: 100%; position: relative; display: flex; }
+        #mobileMap {
+            position: absolute;
+            inset: 0;
+            z-index: 1;
+        }
 
-#map.full-map { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+        .leaflet-tile.qeri-dark-tiles {
+            filter: invert(1) hue-rotate(180deg) brightness(0.84) contrast(0.92);
+        }
 
-.custom-icon { border-radius: 50%; display: flex; justify-content: center; align-items: center; color: white; box-shadow: 0 6px 16px rgba(0,0,0,0.3); border: 3px solid white; }
-.user-icon { background-color: var(--primary-blue); font-size: 1.1rem; }
-.amb-icon { background-color: var(--danger-red); font-size: 1.3rem; }
+        .top-overlay {
+            position: relative;
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            background: linear-gradient(to bottom, rgba(4, 7, 17, 0.96), rgba(4, 7, 17, 0.75), transparent);
+        }
 
-.map-overlay-header {
-    position: absolute; top: 0; left: 0; width: 100%; z-index: 10;
-    padding: 40px 20px 20px; display: flex; justify-content: space-between; align-items: center;
-    background: linear-gradient(to bottom, rgba(255,255,255,0.95), transparent); pointer-events: none;
-}
-.menu-btn, .profile-btn {
-    width: 44px; height: 44px; background: white; border-radius: 50%;
-    display: flex; justify-content: center; align-items: center;
-    box-shadow: var(--shadow-md); font-size: 1.1rem; cursor: pointer; pointer-events: auto;
-}
-.brand-pill { background: var(--text-primary); color: white; padding: 8px 16px; border-radius: 20px; font-weight: 700; font-size: 0.9rem; pointer-events: auto; }
+        .brand-pill {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(10, 15, 29, 0.92);
+            border: 1px solid var(--border);
+            padding: 6px 12px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 800;
+        }
 
-.bottom-sheet {
-    position: absolute; bottom: 0; left: 0; width: 100%;
-    background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(20px);
-    z-index: 10; border-radius: 32px 32px 0 0; box-shadow: 0 -10px 40px rgba(0,0,0,0.15);
-    padding: 32px 24px 24px; transition: var(--transition-normal); display: flex; flex-direction: column;
-}
-.bottom-sheet::before {
-    content: ""; position: absolute; top: 12px; left: 50%;
-    transform: translateX(-50%); width: 40px; height: 5px; background: #cbd5e1; border-radius: 10px;
-}
-.sheet-state { display: none; flex-direction: column; animation: fadeIn 0.4s ease forwards; }
-.sheet-state.active { display: flex; }
-@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .gps-badge {
+            font-size: 10px;
+            font-weight: 700;
+            padding: 5px 10px;
+            border-radius: 999px;
+            background: rgba(17, 24, 39, 0.9);
+            border: 1px solid var(--border);
+            color: var(--text-dim);
+        }
 
-.sheet-title { font-size: 1.4rem; font-weight: 700; margin-bottom: 8px; text-align: center; }
-.sheet-sub { text-align: center; color: var(--text-secondary); font-size: 0.95rem; line-height: 1.4; margin-bottom: 30px; }
+        .gps-badge.locked {
+            border-color: rgba(16, 185, 129, 0.5);
+            color: #86efac;
+            background: rgba(16, 185, 129, 0.15);
+        }
 
-.sos-btn-modern {
-    background: linear-gradient(135deg, var(--danger-red), #ff4b2b); color: white;
-    border: none; border-radius: 20px; padding: 20px; margin-bottom: 24px;
-    cursor: pointer; position: relative; overflow: hidden;
-    box-shadow: 0 10px 25px rgba(234, 27, 36, 0.35); transition: transform 0.2s;
-}
-.sos-btn-modern:active { transform: scale(0.96); }
-.sos-content { display: flex; justify-content: center; align-items: center; gap: 12px; font-size: 1.5rem; font-weight: 800; letter-spacing: 1px; }
+        .gps-badge.demo {
+            border-color: rgba(192, 132, 252, 0.5);
+            color: #e9d5ff;
+            background: rgba(192, 132, 252, 0.15);
+        }
 
-.pulse-animation { animation: pulseBig 2.5s infinite; }
-@keyframes pulseBig {
-    0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(234, 27, 36, 0.6); }
-    50% { transform: scale(1.02); box-shadow: 0 0 0 15px rgba(234, 27, 36, 0); }
-    100% { transform: scale(1); }
-}
-.sec-info { display: flex; align-items: center; justify-content: center; gap: 8px; color: #10b981; font-weight: 600; font-size: 0.85rem;}
+        .gps-badge.error {
+            border-color: rgba(244, 63, 94, 0.5);
+            color: #fda4af;
+            background: rgba(244, 63, 94, 0.15);
+        }
 
-.loader-container { display: flex; flex-direction: column; align-items: center; padding: 20px 0 40px; }
-.spinner {
-    width: 60px; height: 60px; border: 5px solid #e2e8f0; border-top-color: var(--danger-red);
-    border-radius: 50%; animation: spin 1s infinite; margin-bottom: 24px;
-}
-@keyframes spin { 100% { transform: rotate(360deg); } }
-.loader-title { font-size: 1.2rem; font-weight: 700; margin-bottom: 8px; }
-.loader-sub { color: var(--text-secondary); font-size: 0.95rem; }
+        .bottom-sheet {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            z-index: 12;
+            background: rgba(10, 15, 29, 0.96);
+            backdrop-filter: blur(22px);
+            border-top: 1px solid var(--border);
+            border-radius: 24px 24px 0 0;
+            padding: 16px 18px 20px;
+            box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.7);
+        }
 
-.status-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-.status-title { font-size: 1.15rem; font-weight: 700; color: #22c55e;}
-.pill-badge { background: #fee2e2; color: var(--danger-red); padding: 4px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 700; animation: blink 2s infinite; }
-@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .sheet-handle {
+            width: 40px;
+            height: 4px;
+            border-radius: 999px;
+            background: var(--border);
+            margin: 0 auto 12px;
+        }
 
-.eta-container { text-align: center; margin-bottom: 24px; }
-.eta-large { font-size: 3.2rem; font-weight: 800; color: var(--primary-blue); line-height: 1; margin-bottom: 6px; font-variant-numeric: tabular-nums; }
-.eta-label { color: var(--text-secondary); font-size: 0.95rem; font-weight: 500; }
+        .sheet-state {
+            display: none;
+            flex-direction: column;
+            gap: 12px;
+        }
 
-.amb-card { background: #f8fafc; border: 1px solid var(--border-color); border-radius: 16px; padding: 16px; display: flex; align-items: center; gap: 16px; margin-bottom: 24px; }
-.amb-icon-wrap { width: 48px; height: 48px; background: #ffe4e6; color: var(--danger-red); border-radius: 12px; display: flex; justify-content: center; align-items: center; font-size: 1.4rem; }
-.amb-details { flex: 1; }
-.amb-id { font-size: 0.95rem; margin-bottom: 4px; font-weight: 700;}
-.amb-plate { font-size: 0.85rem; color: var(--text-secondary); }
-.icon-circle { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--border-color); display: flex; justify-content: center; align-items: center; color: var(--text-primary); cursor: pointer; }
+        .sheet-state.active {
+            display: flex;
+        }
 
-.divider { border: none; border-top: 1px solid var(--border-color); margin: 0 -24px 20px; }
-.first-aid-panel h3 { color: var(--danger-red); font-size: 1.05rem; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
-.first-aid-steps { list-style: none; }
-.first-aid-steps li { font-size: 0.9rem; margin-bottom: 10px; display: flex; align-items: center; gap: 10px; font-weight: 500; }
-.first-aid-steps li i.fa-check { color: #10b981; }
-.first-aid-steps li.danger-text { color: var(--danger-red); font-weight: 600; }
+        .field-label {
+            font-size: 9px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-dim);
+            font-weight: 700;
+            margin-bottom: 4px;
+            display: block;
+        }
+
+        select.emerg-select {
+            width: 100%;
+            padding: 10px 12px;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            color: var(--text);
+            font-size: 12px;
+            font-weight: 600;
+            font-family: inherit;
+        }
+
+        .gps-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 8px;
+        }
+
+        .gps-cell {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 8px 10px;
+        }
+
+        .gps-cell .lbl {
+            font-size: 8px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+        }
+
+        .gps-cell .val {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--accent);
+            margin-top: 2px;
+        }
+
+        .sos-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .sos-btn {
+            flex: 1;
+            padding: 14px 16px;
+            border: none;
+            border-radius: 14px;
+            background: linear-gradient(135deg, #f43f5e, #be123c);
+            color: #fff;
+            font-size: 14px;
+            font-weight: 800;
+            letter-spacing: 0.8px;
+            cursor: pointer;
+            box-shadow: 0 6px 24px rgba(244, 63, 94, 0.45);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .sos-btn:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+        }
+
+        .sos-btn.pulsing {
+            animation: sosPulse 1.3s ease-in-out infinite;
+        }
+
+        @keyframes sosPulse {
+
+            0%,
+            100% {
+                box-shadow: 0 0 18px rgba(244, 63, 94, 0.45);
+            }
+
+            50% {
+                box-shadow: 0 0 38px rgba(244, 63, 94, 0.9);
+            }
+        }
+
+        .btn-secondary {
+            padding: 10px 12px;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            color: var(--text);
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .eta-banner {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: linear-gradient(135deg, rgba(0, 212, 255, 0.12), rgba(192, 132, 252, 0.12));
+            border: 1px solid rgba(0, 212, 255, 0.35);
+            border-radius: 14px;
+            padding: 12px 14px;
+        }
+
+        .eta-big {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 24px;
+            font-weight: 800;
+            color: var(--accent);
+        }
+
+        .phase-pill {
+            font-size: 10px;
+            font-weight: 800;
+            padding: 4px 10px;
+            border-radius: 999px;
+            background: rgba(16, 185, 129, 0.18);
+            border: 1px solid rgba(16, 185, 129, 0.5);
+            color: #86efac;
+        }
+
+        .unit-card {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 10px 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            font-size: 11px;
+        }
+
+        .reroute-banner {
+            display: none;
+            background: rgba(251, 191, 36, 0.14);
+            border: 1px solid rgba(251, 191, 36, 0.5);
+            color: #fde68a;
+            border-radius: 10px;
+            padding: 8px 10px;
+            font-size: 11px;
+            font-weight: 700;
+        }
+
+        .status-msg {
+            font-size: 11px;
+            color: var(--text-dim);
+            line-height: 1.4;
+        }
     </style>
 </head>
+
 <body>
-    <div class="app-wrapper">
-        <main class="phone-container active">
-            
-            <div id="map" class="full-map"></div>
 
-            <header class="map-overlay-header">
-                <div class="menu-btn"><i class="fa-solid fa-bars"></i></div>
-                <div class="brand-pill">Q-AERS</div>
-                <div class="profile-btn"><i class="fa-solid fa-user"></i></div>
-            </header>
+    <div class="phone-shell">
+        <div id="mobileMap"></div>
 
-            <div class="bottom-sheet" id="bottom-sheet">
-                
-                <div class="sheet-state active" id="state-idle">
-                    <h2 class="sheet-title">Emergency Assistance</h2>
-                    <p class="sheet-sub">Tap the button below to immediately dispatch the nearest available ambulance to your exact location.</p>
-                    
-                    <button class="sos-btn-modern pulse-animation" onclick="triggerDispatch()">
-                        <div class="sos-content">
-                            <span class="sos-text">CALL SOS</span>
-                            <i class="fa-solid fa-truck-medical"></i>
-                        </div>
+        <div class="top-overlay">
+            <div class="brand-pill">
+                <span>⚛</span>
+                <span>Q-AERS Patient SOS</span>
+            </div>
+            <div class="gps-badge" id="gpsBadge">Locating...</div>
+        </div>
+
+        <div class="bottom-sheet">
+            <div class="sheet-handle"></div>
+
+            <!-- STATE 1: READY TO SOS -->
+            <div class="sheet-state active" id="state-sos">
+                <div>
+                    <label class="field-label" for="emergencyTypeSelect">Clinical Emergency Category</label>
+                    <select id="emergencyTypeSelect" class="emerg-select">
+                        <option value="Cardiac Emergency">❤️ Cardiac Emergency — Critical</option>
+                        <option value="Stroke">🧠 Stroke / Neurological — Critical</option>
+                        <option value="Accident / Trauma">💥 Accident / Trauma — Critical</option>
+                        <option value="Severe Bleeding">🩸 Severe Haemorrhage — Critical</option>
+                        <option value="Respiratory Emergency">🫁 Respiratory Distress — High</option>
+                        <option value="Burn">🔥 Severe Burn — High</option>
+                        <option value="Fracture">🦴 Fracture / Orthopaedic — Medium</option>
+                        <option value="General Emergency">🚨 General Emergency — Medium</option>
+                    </select>
+                </div>
+
+                <div class="gps-grid">
+                    <div class="gps-cell">
+                        <div class="lbl">Latitude</div>
+                        <div class="val" id="dispLat">—</div>
+                    </div>
+                    <div class="gps-cell">
+                        <div class="lbl">Longitude</div>
+                        <div class="val" id="dispLng">—</div>
+                    </div>
+                    <div class="gps-cell">
+                        <div class="lbl">Accuracy</div>
+                        <div class="val" id="dispAcc">—</div>
+                    </div>
+                </div>
+
+                <div class="sos-row">
+                    <button class="sos-btn" id="sosBtn" onclick="triggerSOS()" disabled>
+                        <span>🚨</span>
+                        <span>SEND EMERGENCY SOS</span>
                     </button>
-                    
-                    <div class="sec-info">
-                        <i class="fa-solid fa-shield-halved"></i>
-                        <span>Quantum-Assisted Routing Active</span>
-                    </div>
+                    <button class="btn-secondary" id="demoLocBtn" onclick="useMobileDemoLocation()"
+                        title="Use Demo Coordinates">📍 Demo</button>
                 </div>
 
-                <div class="sheet-state" id="state-locating">
-                    <div class="loader-container">
-                        <div class="spinner"></div>
-                        <h3 class="loader-title" id="loader-title-text">Fetching optimal route...</h3>
-                        <p class="loader-sub">Connecting to Q-AERS Emergency Servers</p>
-                    </div>
-                </div>
-
-                <div class="sheet-state" id="state-tracking">
-                    <div class="status-header">
-                        <h2 class="status-title">🚑 Ambulance Dispatched!</h2>
-                        <div class="pill-badge">Live</div>
-                    </div>
-                    
-                    <div class="eta-container">
-                        <div class="eta-large" id="eta-display">-- min</div>
-                        <div class="eta-label">Estimated Arrival via Optimized Route</div>
-                    </div>
-                    
-                    <div class="amb-card">
-                        <div class="amb-icon-wrap"><i class="fa-solid fa-hospital"></i></div>
-                        <div class="amb-details">
-                            <div class="amb-id"><strong id="hosp-name-display">Triangulating Hospital...</strong></div>
-                            <div class="amb-plate" id="hosp-dist-display">Securing Quantum Corridor</div>
-                        </div>
-                        <div class="amb-contact">
-                            <button class="icon-circle"><i class="fa-solid fa-diamond-turn-right"></i></button>
-                        </div>
-                    </div>
-                    
-                    <hr class="divider">
-                    
-                    <div class="first-aid-panel">
-                        <h3><i class="fa-solid fa-kit-medical"></i> First Aid Checklist</h3>
-                        <ul class="first-aid-steps">
-                            <li><i class="fa-solid fa-check"></i> Stay calm and clear the pathway</li>
-                            <li><i class="fa-solid fa-check"></i> Monitor patient breathing</li>
-                            <li class="danger-text"><i class="fa-solid fa-ban"></i> Do NOT move the patient</li>
-                        </ul>
-                    </div>
+                <div class="status-msg" id="statusMsg">Acquiring GPS lock or tap Demo to test emergency SOS dispatch.
                 </div>
             </div>
-        </main>
+
+            <!-- STATE 2: DISPATCHING / WAITING FOR AMBULANCE -->
+            <div class="sheet-state" id="state-waiting">
+                <div class="eta-banner">
+                    <div>
+                        <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;font-weight:700">SOS
+                            Transmitted</div>
+                        <div style="font-size:16px;font-weight:800;color:var(--text)" id="waitCaseId">Case #—</div>
+                    </div>
+                    <span class="phase-pill"
+                        style="background:rgba(251,191,36,0.16);border-color:rgba(251,191,36,0.5);color:#fde68a">Matching
+                        Unit...</span>
+                </div>
+                <div class="status-msg">Emergency coordinates transmitted to Command Center. Waiting for medical fleet
+                    &amp; hospital assignment...</div>
+            </div>
+
+            <!-- STATE 3: LIVE AMBULANCE TRACKING (Q-AERS + QERI SYNC) -->
+            <div class="sheet-state" id="state-tracking">
+                <div class="eta-banner">
+                    <div>
+                        <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;font-weight:700"
+                            id="etaLabel">Estimated Arrival</div>
+                        <div class="eta-big" id="etaDisplay">— min</div>
+                    </div>
+                    <span class="phase-pill" id="phaseBadge">En Route</span>
+                </div>
+
+                <div class="reroute-banner" id="rerouteBanner"></div>
+
+                <div class="unit-card">
+                    <div style="display:flex;justify-content:space-between;align-items:center">
+                        <strong id="trackUnitName" style="color:var(--accent)">Rapid Response Unit</strong>
+                        <span id="trackSpeed" style="font-family:'JetBrains Mono',monospace;color:#86efac">0 km/h</span>
+                    </div>
+                    <div style="color:var(--text-dim)" id="trackCaps">Capabilities: —</div>
+                    <div style="color:var(--text)">🏥 Destination: <strong id="trackHospital">—</strong></div>
+                    <div style="color:#c084fc;font-size:10px" id="trackOptimizer">Optimizer: —</div>
+                </div>
+
+                <button class="btn-secondary" onclick="resetMobileTracker()">↺ New SOS Request</button>
+            </div>
+        </div>
     </div>
 
-    <!-- MAP LOGIC & SOS TRIGGER INTEGRATION -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
-        let map;
-        let userMarker, ambMarker;
-        
-        // Simulating Visakhapatnam GPS for presentation fallback
-        const lockedSimLat = 17.7104 + (Math.random() * 0.02 - 0.01);
-        const lockedSimLng = 83.1657 + (Math.random() * 0.02 - 0.01);
-        
-        let isDispatching = false;
-
-        document.addEventListener("DOMContentLoaded", () => {
-            map = L.map('map', { zoomControl: false }).setView([17.6868, 83.2185], 11);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '© OpenStreetMap', maxZoom: 19
-            }).addTo(map);
-        });
-
-        function switchState(stateId) {
-            document.querySelectorAll('.sheet-state').forEach(el => el.classList.remove('active'));
-            document.getElementById(stateId).classList.add('active');
-        }
-
-        async function triggerDispatch() {
-            if (isDispatching) return;
-            isDispatching = true;
-            
-            switchState('state-locating');
-            
-            // Generate API payload for laptop dashboard
-            const apiPayload = (lat, lng) => JSON.stringify({ 
-                userLat: lat, userLng: lng, 
-                hospitalLat: lat, hospitalLng: lng 
-            });
-
-            if ("geolocation" in navigator) {
-                navigator.geolocation.getCurrentPosition(
-                    async (pos) => { handleValidDispatch(pos.coords.latitude, pos.coords.longitude, apiPayload); },
-                    async (error) => {
-                        document.getElementById('loader-title-text').innerText = "Triangulating Fallback...";
-                        handleValidDispatch(lockedSimLat, lockedSimLng, apiPayload);
-                    },
-                    { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-                );
-            } else {
-                handleValidDispatch(lockedSimLat, lockedSimLng, apiPayload);
+        function resolveApiBase() {
+            if (window.location.protocol === 'file:') return 'http://127.0.0.1:8001/api';
+            const port = window.location.port;
+            if (port === '8001' || port === '' || port === '80' || port === '443') {
+                return `${window.location.origin}/api`;
             }
+            return `${window.location.protocol}//${window.location.hostname}:8001/api`;
         }
 
-        async function handleValidDispatch(lat, lng, apiPayload) {
-            // Draw Patient pin on phone map
-            const userHtml = '<div class="custom-icon user-icon"><i class="fa-solid fa-person"></i></div>';
-            userMarker = L.marker([lat, lng], {
-                icon: L.divIcon({ html: userHtml, className: '', iconSize: [36, 36], iconAnchor: [18, 18] })
-            }).addTo(map);
-            
-            map.flyTo([lat, lng], 14);
+        const API_BASE = resolveApiBase();
+        let realGPS = null;
+        let activeCaseId = null;
+        let map = null;
+        let patientMarker = null;
+        let ambMarker = null;
+        let hospMarker = null;
+        let routeLayers = [];
+        let pollTimer = null;
+        let lastRenderedPathSig = '';
+
+        function switchState(id) {
+            document.querySelectorAll('.sheet-state').forEach(el => el.classList.remove('active'));
+            const target = document.getElementById(id);
+            if (target) target.classList.add('active');
+        }
+
+        function initMobileMap(lat, lng) {
+            if (!map) {
+                map = L.map('mobileMap', { zoomControl: false }).setView([lat, lng], 14);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    maxZoom: 19,
+                    className: 'qeri-dark-tiles'
+                }).addTo(map);
+            } else {
+                map.setView([lat, lng], 14);
+            }
+
+            if (patientMarker) map.removeLayer(patientMarker);
+            patientMarker = L.marker([lat, lng], {
+                icon: L.divIcon({
+                    html: '<div style="width:20px;height:20px;border-radius:50%;background:#38bdf8;border:3px solid #fff;box-shadow:0 0 16px #38bdf8"></div>',
+                    className: '',
+                    iconSize: [20, 20],
+                    iconAnchor: [10, 10]
+                })
+            }).addTo(map).bindPopup('Patient Location');
+        }
+
+        function applyLocation(lat, lng, accuracy, source) {
+            realGPS = { latitude: lat, longitude: lng, accuracy: accuracy, source: source };
+            document.getElementById('dispLat').textContent = lat.toFixed(5);
+            document.getElementById('dispLng').textContent = lng.toFixed(5);
+            document.getElementById('dispAcc').textContent = accuracy ? `${Math.round(accuracy)}m` : 'Demo';
+            document.getElementById('sosBtn').disabled = false;
+
+            const badge = document.getElementById('gpsBadge');
+            badge.className = 'gps-badge ' + (source === 'demo' ? 'demo' : 'locked');
+            badge.textContent = source === 'demo' ? 'Demo GPS' : 'GPS Locked';
+
+            document.getElementById('statusMsg').textContent = 'Ready. Tap SEND EMERGENCY SOS to alert the Command Center.';
+            initMobileMap(lat, lng);
+        }
+
+        function useMobileDemoLocation() {
+            applyLocation(17.7046, 83.2926, 25, 'demo');
+        }
+
+        (function acquireGPS() {
+            initMobileMap(17.7046, 83.2926);
+            if (!('geolocation' in navigator)) {
+                document.getElementById('gpsBadge').className = 'gps-badge error';
+                document.getElementById('gpsBadge').textContent = 'GPS N/A';
+                document.getElementById('statusMsg').textContent = 'Browser geolocation unsupported. Tap Demo to simulate SOS.';
+                return;
+            }
+            navigator.geolocation.getCurrentPosition(
+                pos => applyLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy, 'phone-gps'),
+                err => {
+                    document.getElementById('gpsBadge').className = 'gps-badge error';
+                    document.getElementById('gpsBadge').textContent = 'GPS Offline';
+                    document.getElementById('statusMsg').textContent = 'GPS unavailable (' + err.message + '). Tap Demo to use simulated location.';
+                },
+                { enableHighAccuracy: true, timeout: 9000, maximumAge: 0 }
+            );
+        })();
+
+        async function triggerSOS() {
+            if (!realGPS) return;
+            const btn = document.getElementById('sosBtn');
+            const emergType = document.getElementById('emergencyTypeSelect').value;
+            btn.disabled = true;
+            btn.classList.add('pulsing');
 
             try {
-                // Post perfectly formatted GPS coordinates to the Laptop Dispatch Dashboard (untouched trigger)
-                const backendURL = '/api/sos_trigger';
-                
-                await fetch(backendURL, {
+                const res = await fetch(`${API_BASE}/sos_trigger`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: apiPayload(lat, lng)
+                    body: JSON.stringify({
+                        userLat: realGPS.latitude,
+                        userLng: realGPS.longitude,
+                        accuracy: realGPS.accuracy,
+                        source: realGPS.source,
+                        emergency_type: emergType,
+                        caller_phone: '+91-99887-76655'
+                    })
                 });
-                
-                setTimeout(() => { startTrackingSimulation(lat, lng); }, 1500);
-
-            } catch (error) {
-                // Network Error Fallback for Hackathon testing
-                setTimeout(() => { startTrackingSimulation(lat, lng); }, 1500);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+                activeCaseId = data.case_id;
+                document.getElementById('waitCaseId').textContent = `Case #${activeCaseId} (${emergType})`;
+                switchState('state-waiting');
+                startDispatchTrackingPoll();
+            } catch (e) {
+                btn.classList.remove('pulsing');
+                btn.disabled = false;
+                document.getElementById('statusMsg').innerHTML = `<span style="color:#fda4af">Failed: ${e.message}. Ensure server is running on port 8001.</span>`;
             }
         }
 
-        async function startTrackingSimulation(uLat, uLng) {
-            switchState('state-tracking');
-            
-            // Set base target
-            let ambLat = uLat + 0.012;
-            let ambLng = uLng - 0.005;
-            
-            const ambHtml = '<div class="custom-icon amb-icon"><i class="fa-solid fa-truck-medical"></i></div>';
-            ambMarker = L.marker([ambLat, ambLng], {
-                icon: L.divIcon({ html: ambHtml, className: '', iconSize: [42, 42], iconAnchor: [21, 21], zIndexOffset: 1000 })
-            }).addTo(map);
-
-            // Establish Sync Socket to exact backend geometry array
-            pollForActiveDispatch(uLat, uLng, ambLat, ambLng);
-        }
-
-        async function pollForActiveDispatch(uLat, uLng, fallbackAmbLat, fallbackAmbLng) {
-            const backendURL = '/api/active_dispatch';
-            
-            const interval = setInterval(async () => {
+        function startDispatchTrackingPoll() {
+            if (pollTimer) clearInterval(pollTimer);
+            pollTimer = setInterval(async () => {
                 try {
-                    const res = await fetch(backendURL);
-                    const data = await res.json();
-                    
-                    if (data.active && data.path && data.path.length > 0) {
-                        clearInterval(interval);
-                        
-                        // Exact match visual rendering of the Purple Quantum Route locally computed on dashboard!
-                        L.polyline(data.path, { color: '#c084fc', weight: 7, opacity: 1.0 }).addTo(map);
-                        
-                        // Move ambulance marker strictly to first coordinate from backend payload!
-                        const trueAmbLat = data.path[0][0];
-                        const trueAmbLng = data.path[0][1];
-                        ambMarker.setLatLng([trueAmbLat, trueAmbLng]);
+                    const url = activeCaseId
+                        ? `${API_BASE}/active_dispatch?case_id=${encodeURIComponent(activeCaseId)}`
+                        : `${API_BASE}/active_dispatch`;
+                    const res = await fetch(url);
+                    if (!res.ok) return;
+                    const d = await res.json();
+                    if (!d.active) return;
 
-                        // Center camera perfectly
-                        const bounds = L.latLngBounds([[trueAmbLat, trueAmbLng], [uLat, uLng]]);
-                        map.fitBounds(bounds, { padding: [60, 60] });
-
-                        // Sync dynamic descriptive data directly from Dashboard bridge!
-                        document.getElementById('hosp-name-display').innerText = data.hosp_name;
-                        document.getElementById('hosp-dist-display').innerText = "Unit Base: " + data.hosp_name;
-
-                        // Begin True Mathematical Interpolation and Time Decay perfectly synced to Server
-                        animatePhoneAmbulance(data.path, data.eta, data.start_time);
-                    }
-                } catch(e) {
-                    // console.error("Waiting for backend sync...");
-                }
-            }, 1000);
+                    switchState('state-tracking');
+                    renderLiveTracking(d);
+                } catch (e) { }
+            }, 900);
         }
 
-        function animatePhoneAmbulance(path, etaMinutes, serverStartTimeMs) {
-            const totalPts = path.length;
-            const totalDurationMs = etaMinutes * 60 * 1000;
-            const etaEl = document.getElementById('eta-display');
-            
-            function tick() {
-                const ts = Date.now();
-                // Because phones might poll late, we measure purely against the absolute timestamp safely
-                const elapsedMs = ts - serverStartTimeMs;
-                const progress = Math.min(1, Math.max(0, elapsedMs / totalDurationMs));
-                
-                // Live visual timer sync
-                const remainMinutes = (totalDurationMs - elapsedMs) / 60000;
-                
-                if (remainMinutes <= 1.0) etaEl.classList.add('critical-time');
-                if (remainMinutes <= 0) {
-                    etaEl.innerText = "ARRIVING";
-                    etaEl.style.fontSize = "2.4rem";
-                } else {
-                    etaEl.innerText = remainMinutes.toFixed(1) + " min";
+        function renderLiveTracking(d) {
+            const p1 = d.phase1_path || [];
+            const p2 = d.phase2_path || [];
+            const sig = `${p1.length}-${p2.length}-${d.reroute_count || 0}`;
+
+            if (sig !== lastRenderedPathSig) {
+                lastRenderedPathSig = sig;
+                routeLayers.forEach(l => map.removeLayer(l));
+                routeLayers = [];
+                if (p1.length >= 2) {
+                    routeLayers.push(L.polyline(p1, { color: '#38bdf8', weight: 4, opacity: 0.9, dashArray: '8 6' }).addTo(map));
                 }
-                
-                if (progress >= 1.0) {
-                    ambMarker.setLatLng(path[totalPts - 1]);
-                    return;
+                if (p2.length >= 2) {
+                    routeLayers.push(L.polyline(p2, { color: '#22c55e', weight: 5, opacity: 0.95 }).addTo(map));
                 }
-                
-                const fineIdx = progress * (totalPts - 1);
-                const idx1 = Math.floor(fineIdx);
-                const idx2 = Math.min(totalPts - 1, idx1 + 1);
-                const ratio = fineIdx - idx1;
-                
-                const p1 = path[idx1];
-                const p2 = path[idx2];
-                const currentPos = [
-                    p1[0] + (p2[0] - p1[0]) * ratio,
-                    p1[1] + (p2[1] - p1[1]) * ratio
-                ];
-                
-                ambMarker.setLatLng(currentPos);
-                requestAnimationFrame(tick);
+                if (d.hospital_lat && d.hospital_lng) {
+                    if (hospMarker) map.removeLayer(hospMarker);
+                    hospMarker = L.marker([d.hospital_lat, d.hospital_lng], {
+                        icon: L.divIcon({ html: '<div style="font-size:24px">🏥</div>', className: '', iconSize: [28, 28], iconAnchor: [14, 14] })
+                    }).addTo(map).bindPopup(d.hospital_name || 'Hospital');
+                }
+                const pts = [...p1, ...p2];
+                if (pts.length >= 2) {
+                    map.fitBounds(L.latLngBounds(pts), { padding: [55, 160] });
+                }
             }
-            requestAnimationFrame(tick);
+
+            const ambLat = d.current_lat || (p1[0] ? p1[0][0] : realGPS.latitude);
+            const ambLng = d.current_lng || (p1[0] ? p1[0][1] : realGPS.longitude);
+            if (!ambMarker) {
+                ambMarker = L.marker([ambLat, ambLng], {
+                    icon: L.divIcon({ html: '<div style="font-size:28px;filter:drop-shadow(0 0 10px #38bdf8)">🚑</div>', className: '', iconSize: [32, 32], iconAnchor: [16, 16] }),
+                    zIndexOffset: 2000
+                }).addTo(map);
+            } else {
+                ambMarker.setLatLng([ambLat, ambLng]);
+            }
+
+            const phaseLabels = {
+                en_route_to_patient: 'Responding to You',
+                on_scene: 'Paramedics On Scene',
+                en_route_to_hospital: 'Transporting to Hospital',
+                arrived: 'Arrived at Hospital ER'
+            };
+            document.getElementById('phaseBadge').textContent = phaseLabels[d.phase] || 'Active';
+            document.getElementById('trackUnitName').textContent = `${d.assigned_ambulance || 'AMB'} — ${d.assigned_ambulance_name || 'Unit'}`;
+            document.getElementById('trackSpeed').textContent = `${Math.round(d.current_speed_kmh || 0)} km/h`;
+            document.getElementById('trackCaps').textContent = `Equipment: ${(d.ambulance_capabilities || []).join(', ') || 'ALS'}`;
+            document.getElementById('trackHospital').textContent = d.hospital_name || 'Hospital';
+            document.getElementById('trackOptimizer').textContent = `Engine: ${d.optimization_method || 'TOPSIS'} (${d.improvement_pct || 0}% gain)`;
+
+            const etaDisplay = document.getElementById('etaDisplay');
+            if (d.phase === 'arrived') {
+                etaDisplay.textContent = 'ARRIVED';
+            } else if (d.phase === 'on_scene') {
+                etaDisplay.textContent = 'ON SCENE';
+            } else if (d.phase === 'en_route_to_hospital') {
+                document.getElementById('etaLabel').textContent = 'Hospital Transport ETA';
+                etaDisplay.textContent = `${(d.phase2_duration_sec / 60).toFixed(1)} min`;
+            } else {
+                document.getElementById('etaLabel').textContent = 'Ambulance Arrival ETA';
+                etaDisplay.textContent = `${(d.phase1_duration_sec / 60).toFixed(1)} min`;
+            }
+
+            const rerouteBanner = document.getElementById('rerouteBanner');
+            if (d.reroute_count > 0 && d.last_reroute_reason) {
+                rerouteBanner.style.display = 'block';
+                rerouteBanner.textContent = `🔄 Corridor Rerouted: ${d.last_reroute_reason}`;
+            } else {
+                rerouteBanner.style.display = 'none';
+            }
+        }
+
+        function resetMobileTracker() {
+            if (pollTimer) clearInterval(pollTimer);
+            pollTimer = null;
+            activeCaseId = null;
+            lastRenderedPathSig = '';
+            routeLayers.forEach(l => map.removeLayer(l));
+            routeLayers = [];
+            if (ambMarker) { map.removeLayer(ambMarker); ambMarker = null; }
+            if (hospMarker) { map.removeLayer(hospMarker); hospMarker = null; }
+            const btn = document.getElementById('sosBtn');
+            btn.classList.remove('pulsing');
+            btn.disabled = !realGPS;
+            switchState('state-sos');
         }
     </script>
 </body>
+
 </html>
